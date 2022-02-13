@@ -105,7 +105,7 @@ micro /etc/yum.repos.d/elrepo.repo
 
 dnf upgrade --refresh -y
 
-:; dnf install -y kernel-lt efibootmgr systemd-container pciutils wget tar lshw
+dnf install -y kernel-lt efibootmgr systemd-container pciutils wget tar lshw
 ```
 
 Set up bootloader
@@ -122,9 +122,9 @@ bootctl
 
 Prepare for soft boot
 ```sh
-:; systemctl disable sshd
-:; passwd
-:; exit
+systemctl disable sshd
+passwd
+exit
 ```
 
 Soft boot into new install
