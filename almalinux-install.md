@@ -54,7 +54,7 @@ swapon /dev/nvme0n1p3
 mkdir -pv /mnt/{boot,home}
 mount /dev/nvme0n1p1 /mnt/boot
 mount /dev/nvme0n1p4 /mnt/home
-genfstab -U /mnt
+genfstab -U /mnt # note root UUID for future /etc/kernel/cmdline
 ```
 
 Get image and check SHA-256
@@ -110,6 +110,10 @@ dnf install -y kernel-lt efibootmgr systemd-container pciutils wget tar lshw
 
 Set up bootloader
 ```sh
+micro /etc/kernel/cmdline
+# note root UUID from previous: genfstab -U /mnt
+# cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet
+
 bootctl install
 
 ls /lib/modules/ # note kernel version, use for: export kver=
