@@ -171,8 +171,11 @@ Prepare for hard boot
 genfstab -U /mnt > /mnt/etc/fstab
 arch-chroot /mnt
 cat /etc/fstab
-dnf install NetworkManager rsync keychain
+dnf install NetworkManager rsync keychain fontconfig terminus-fonts-console clang
 systemctl enable NetworkManager
+micro /etc/vconsole.conf
+FONT=ter-u32n
+
 exit
 ```
 
