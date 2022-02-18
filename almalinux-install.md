@@ -171,7 +171,7 @@ Prepare for hard boot
 genfstab -U /mnt > /mnt/etc/fstab
 arch-chroot /mnt
 cat /etc/fstab
-dnf install NetworkManager
+dnf install NetworkManager rsync keychain
 systemctl enable NetworkManager
 exit
 ```
@@ -186,12 +186,4 @@ umount -R /mnt/
 
 Reboot into fresh system
 
-Prepare Desktop environment
-```sh
-# login as admin
-sudo dnf groupinstall Xfce
-sudo dnf install xorg-x11-drv-intel xorg-x11-drv-evdev
-sudo systemctl enable gdm
-sudo systemctl start gdm
-sudo systemctl status gdm
-```
+sudo ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
