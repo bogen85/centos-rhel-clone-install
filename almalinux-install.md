@@ -92,7 +92,7 @@ dnf install -y htop mlocate openssh-server micro util-linux-user less which man-
 exit # to get bash completion on reentry
 ```
 
-Enable elrepo, install kernel and more packages
+Enable elrepo, install more packages
 ```sh
 arch-chroot /mnt
 
@@ -105,10 +105,10 @@ micro /etc/yum.repos.d/elrepo.repo
 
 dnf upgrade --refresh -y
 
-dnf install -y kernel-lt efibootmgr systemd-container pciutils wget tar lshw
+dnf install -y efibootmgr systemd-container pciutils wget tar lshw
 ```
 
-Set up bootloader
+Set up bootloader and install kernel
 ```sh
 micro /etc/kernel/cmdline
 # note root UUID from previous: genfstab -U /mnt
@@ -117,11 +117,12 @@ micro /etc/kernel/cmdline
 bootctl install
 
 ls /lib/modules/ # note kernel version, use for: export kver=
-export kver=5.4.179-1.el8.elrepo.x86_64
-kernel-install add $kver  /lib/modules/$kver/vmlinuz
-dnf reinstall -y kernel-lt-core
+# export kver=5.4.179-1.el8.elrepo.x86_64
+# kernel-install add $kver  /lib/modules/$kver/vmlinuz
+dnf install -y kernel-lt-core
 
 bootctl
+find /boot
 ```
 
 Prepare for soft boot
@@ -151,7 +152,7 @@ Remove and disable grub
 dnf remove -y grub2-common grub2-tools-minimal grubby grub2-tools
 
 micro /etc/yum.conf
-# add: exclude=*grub2* grubby ipxe-* java-* *-java* *jdk* javapackages-*
+# add: exclude=*grub2* grubby java-* *-java* *jdk* javapackages-*
 ```
 
 Install useful grub deps, more packages, set hostname
