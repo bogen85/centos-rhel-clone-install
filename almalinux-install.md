@@ -1,24 +1,40 @@
-Preperation
-Boot system resucecd
+## Preperation
+- Dowload latest ubuntu server installer
+- http://www.releases.ubuntu.com/21.10/ubuntu-21.10-live-server-amd64.iso
+- Write image to thumbdrive (change /dev/sdb if need be)
+- sudo qemu-img convert -p -t directsync -f raw -O raw ubuntu-21.10-live-server-amd64.iso /dev/sdb
 
-Disable firewall, set root password
+## Exit installer
+Press Alt-F3
+
+## Check ssh, set user password
 ```sh
-systemctl disable iptables
-systemctl stop iptables
-systemctl restart sshd
-systemctl status sshd
-ip addr
+setfont Uni2-Terminus32x16.psf.gz # optional, set console font
+systemctl status ssh
+ip addr # 192.168.10.192
 passwd
 ```
 
-Optional: Log in as root from another system
+## Log in as ubuntu-server from another system, prep installer
+- ssh ubuntu-server@192.168.10.192
 
-Check partiton table
 ```sh
-sgdisk --print /dev/nvme0n1
+sudo apt -y update
+sudo apt -y install pv apt-file systemd-container arch-install-scripts
+sudo apt-file update
 ```
 
-Prepare as follows:
+
+
+## Check partiton table
+```sh
+sudo sgdisk --print /dev/nvme0n1
+# change /dev/nvme0n1 as needed (such as /dev/sda)
+# example:
+sudo sgdisk --print /dev/sda
+```
+
+### Prepare as follows (leave off /home if not development/user machine):
 ```txt
 ...
 Number  Start (sector)    End (sector)  Size       Code  Name
@@ -28,36 +44,70 @@ Number  Start (sector)    End (sector)  Size       Code  Name
    4       538970112      3907029134   1.6 TiB     8312  /home
 ```
 
-Clear signatures (if this is a reinstall)
-```sh
-dd if=/dev/zero of=/dev/nvme0n1p1 bs=65536 count=1
-dd if=/dev/zero of=/dev/nvme0n1p2 bs=65536 count=1
-dd if=/dev/zero of=/dev/nvme0n1p3 bs=65536 count=1
-dd if=/dev/zero of=/dev/nvme0n1p4 bs=65536 count=1
-blkid /dev/nvme0n1*
+### alternative
+```txt
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1            2048         2099199   1024.0 MiB  EF00  EFI-boot
+   2         2099200        35653631   16.0 GiB    8200  swap
+   3        35653632       250069646   102.2 GiB   8304  root/
 ```
 
-Make filesystems
+### Clear signatures (if this is a reinstall)
 ```sh
-mkfs.vfat -F32 -n EFI-BOOT /dev/nvme0n1p1
-mkfs.ext4 -L linux-root /dev/nvme0n1p2
-mkswap -L linux-swap /dev/nvme0n1p3
-mkfs.xfs -L linux-home /dev/nvme0n1p4
-blkid /dev/nvme0n1*
+sudo dd if=/dev/zero of=/dev/nvme0n1p1 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/nvme0n1p2 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/nvme0n1p3 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/nvme0n1p4 bs=4096 count=1
+sudo blkid /dev/nvme0n1*
+```
+
+### Clear signatures (if this is a reinstall) -- alternative
+```sh
+sudo dd if=/dev/zero of=/dev/sda1 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/sda2 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/sda3 bs=4096 count=1
+sudo dd if=/dev/zero of=/dev/sda4 bs=4096 count=1
+sudo blkid /dev/sda*
 ```
 
 
-Mount and check fstab
+### Make filesystems
 ```sh
-mount /dev/nvme0n1p2 /mnt
-swapon /dev/nvme0n1p3
-mkdir -pv /mnt/{boot,home}
-mount /dev/nvme0n1p1 /mnt/boot
-mount /dev/nvme0n1p4 /mnt/home
-genfstab -U /mnt # note root UUID for future /etc/kernel/cmdline
+sudo mkfs.vfat -F32 -n EFI-BOOT /dev/nvme0n1p1
+sudo mkfs.ext4 -L linux-root /dev/nvme0n1p2
+sudo mkswap -L linux-swap /dev/nvme0n1p3
+sudo mkfs.xfs -L linux-home /dev/nvme0n1p4
+sudo blkid /dev/nvme0n1*
 ```
 
-Get image and check SHA-256
+### Make filesystems -- alternative
+```sh
+sudo mkfs.vfat -F32 -n EFI-BOOT /dev/sda1
+sudo mkswap -L linux-swap /dev/sda2
+sudo mkfs.ext4 -L linux-root /dev/sda3
+sudo blkid /dev/sda*
+```
+
+### Mount and check fstab
+```sh
+sudo mount /dev/nvme0n1p2 /mnt
+sudo swapon /dev/nvme0n1p3
+sudo mkdir -pv /mnt/{boot,home}
+sudo mount /dev/nvme0n1p1 /mnt/boot
+sudo mount /dev/nvme0n1p4 /mnt/home
+sudo genfstab -U /mnt # note root UUID for future /etc/kernel/cmdline
+```
+
+### Mount and check fstab -- alternative
+```sh
+sudo mount /dev/sda3 /mnt
+sudo swapon /dev/sda2
+sudo mkdir -pv /mnt/boot
+sudo mount /dev/sda1 /mnt/boot
+sudo genfstab -U /mnt # note root UUID for future /etc/kernel/cmdline
+```
+
+### Get image and check SHA-256
 ```sh
 # check https://us.lxd.images.canonical.com/images/almalinux/8/amd64/default/ and set almalinux to latest
 export almalinux=20220212_23:08
@@ -73,15 +123,17 @@ sha256sum -c SHA256SUMS.rootfs
 ```
 
 
-extract image and create systemd machine id
+### extract image and create systemd machine id
 ```sh
-pv rootfs.tar.xz | tar Jpxf - --directory=/mnt/
-systemd-machine-id-setup --root=/mnt
+sudo -v
+pv rootfs.tar.xz | sudo tar Jpxf - --directory=/mnt/
+sudo systemd-machine-id-setup --root=/mnt
 ```
 
-Enter chroot and install initial packages
+### Enter chroot and install initial packages
 ```sh
-arch-chroot /mnt
+sudo arch-chroot /mnt
+#####################
 
 dnf upgrade --refresh -y
 dnf erase subscription-manager -y
@@ -92,12 +144,11 @@ dnf install -y htop mlocate openssh-server micro util-linux-user less which man-
 exit # to get bash completion on reentry
 ```
 
-Enable elrepo, install more packages
+### Enable elrepo, install more packages
 ```sh
-arch-chroot /mnt
-
-sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-sudo dnf install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm -y
+sudo arch-chroot /mnt
+#####################
+dnf install -y elrepo-release
 
 micro /etc/yum.repos.d/elrepo.repo
 # enable [elrepo-kernel]
@@ -106,88 +157,103 @@ micro /etc/yum.repos.d/elrepo.repo
 dnf upgrade --refresh -y
 
 dnf install -y efibootmgr systemd-container pciutils wget tar lshw
+exit
 ```
 
-Set up bootloader and install kernel
 ```sh
+sudo genfstab -U /mnt
+```
+
+### Set up bootloader and install kernel
+```sh
+sudo arch-chroot /mnt
+#####################
+
 micro /etc/kernel/cmdline
 # note root UUID from previous: genfstab -U /mnt
 # cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet
+sed 's,UUID=,/dev/disk/by-uuid/,' -i /etc/kernel/cmdline
+cat /etc/kernel/cmdline
 
 bootctl install
 
-ls /lib/modules/ # note kernel version, use for: export kver=
+# ls /lib/modules/ # note kernel version, use for: export kver=
 # export kver=5.4.179-1.el8.elrepo.x86_64
 # kernel-install add $kver  /lib/modules/$kver/vmlinuz
-dnf install -y kernel-lt-core
+dnf install -y kernel-ml
 
 bootctl
+efibootmgr -v
 find /boot
 ```
 
-Prepare for soft boot
+### Prepare for soft boot
 ```sh
 systemctl disable sshd
 passwd
 exit
 ```
 
-Soft boot into new install
+### Soft boot into new install
 ```sh
-systemd-nspawn --network-macvlan=eno1 --boot --directory=/mnt
-dhclient mv-eno1
+ip addr # change enp1s0 accordingly in following lines to nic with lan/wan address
+netdev=enp1s0
+sudo systemd-nspawn --network-macvlan=$netdev --boot --directory=/mnt
+#####################################################################
+netdev=enp1s0
+dhclient mv-$netdev
+ip addr
 updatedb
 ```
 
-Create admin account
+### Create admin account
 ```sh
 useradd -r -m admin
 passwd admin
-chsh admin
+chsh admin --shell /bin/bash
 gpasswd -a admin wheel
 ```
 
-Remove and disable grub
+### Remove and disable grub (and other undesirables)
 ```sh
 dnf remove -y grub2-common grub2-tools-minimal grubby grub2-tools
 
+echo 'exclude=*grub2* grubby java-* *-java* *jdk* javapackages-*' >> /etc/yum.conf
 micro /etc/yum.conf
-# add: exclude=*grub2* grubby java-* *-java* *jdk* javapackages-*
+
+dnf reinstall -y kernel-ml-core
 ```
 
-Install useful grub deps, more packages, set hostname
+### Install useful grub deps, more packages, set hostname
 ```sh
 dnf install -y file which dosfstools
 
-micro /etc/hostname # add host name
+echo NEW-HOSTNAME > /etc/hostname # change NEW-HOSTNAME appropiately
 
 hostname -F /etc/hostname
+hostname
 systemctl enable sshd
 halt # poweroff container
 ```
 
 
-Prepare for hard boot
+### Prepare for hard boot
 ```sh
-genfstab -U /mnt > /mnt/etc/fstab
-arch-chroot /mnt
+sudo genfstab -U /mnt | sed 's,UUID=,/dev/disk/by-uuid/,' | sudo tee /mnt/etc/fstab
+sudo arch-chroot /mnt
+#####################
 cat /etc/fstab
+
 dnf install NetworkManager rsync keychain fontconfig terminus-fonts-console clang
 systemctl enable NetworkManager
-micro /etc/vconsole.conf
-FONT=ter-u32n
-
+ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
+echo >> /etc/vconsole.conf 'FONT=ter-u32n'
 exit
 ```
 
-Prepare to reboot
+### Prepare to reboot
 ```sh
-umount -R /mnt/
-# umount /mnt/home
-# umount /mnt/boot
-# umount /mnt/
+sudo umount -R /mnt/
 ```
 
-Reboot into fresh system
-
-sudo ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
+### Reboot into fresh system
