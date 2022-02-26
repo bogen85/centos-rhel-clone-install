@@ -66,7 +66,6 @@ sudo blkid /dev/nvme0n1*
 sudo dd if=/dev/zero of=/dev/sda1 bs=4096 count=1
 sudo dd if=/dev/zero of=/dev/sda2 bs=4096 count=1
 sudo dd if=/dev/zero of=/dev/sda3 bs=4096 count=1
-sudo dd if=/dev/zero of=/dev/sda4 bs=4096 count=1
 sudo blkid /dev/sda*
 ```
 
