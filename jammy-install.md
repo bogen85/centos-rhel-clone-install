@@ -109,7 +109,7 @@ sudo genfstab -U /mnt # note root UUID for future /etc/kernel/cmdline
 ### Get image and check SHA-256
 ```sh
 # check https://us.lxd.images.canonical.com/images/ubuntu/jammy/amd64/default/ and set jammy to latest
-export jammy=20220226_07:42
+export jammy=20220227_07:43
 
 export jammy_base_url=https://us.lxd.images.canonical.com/images/ubuntu/jammy/amd64/default
 export jammy_url=${jammy_base_url}/${jammy}
@@ -136,11 +136,6 @@ sudo arch-chroot /mnt
 
 echo 'APT::Install-Suggests "0";' > /etc/apt/apt.conf.d/99apt.conf
 echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/99apt.conf
-
-# /etc/kernel/postinst.d/
-
-# apt-mark unhold amd64-microcode
-# apt-mark unhold wireless-regdb
 
 apt -y update
 apt -y full-upgrade
@@ -184,16 +179,21 @@ micro /etc/kernel/cmdline
 sed 's,UUID=,/dev/disk/by-uuid/,' -i /etc/kernel/cmdline
 cat /etc/kernel/cmdline
 
-cat > /etc/kernel/postinst.d/zz-update-boot-efi.sh # paste in zz-update-boot-efi.sh contents
-chmod -v 755 /etc/kernel/postinst.d/zz-update-boot-efi.sh
+cat > /etc/kernel/postinst.d/zz-update-boot-efi # paste in zz-update-boot-efi.sh content
+# Ctrl-D when done
+chmod -v 755 /etc/kernel/postinst.d/zz-update-boot-efi
+mkdir -pv /etc/initramfs-tools/post-update.d/ /etc/kernel/postrm.d/ /etc/initramfs/post-update.d/
+ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs-tools/post-update.d/
+ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/kernel/postrm.d/
+ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs/post-update.d/
 
 bootctl install --make-machine-id-directory=no
 
-apt install --install-recommends linux-image-generic
+apt install -y --install-recommends linux-image-generic
 
 bootctl
 efibootmgr -v
-find /boot
+sha256sum $(find /boot -type f | sort)
 ```
 
 ### Prepare for soft boot
@@ -206,10 +206,11 @@ exit
 ### Soft boot into new install
 ```sh
 ip addr # change enp1s0 accordingly in following lines to nic with lan/wan address
-netdev=enp1s0
+netdev=eno1
+sudo sed s,eth0,$netdev,g -i /mnt/etc/netplan/10-lxc.yaml
 sudo systemd-nspawn --network-macvlan=$netdev --boot --directory=/mnt
 #####################################################################
-netdev=enp1s0
+netdev=eno1
 dhclient mv-$netdev
 ip addr
 updatedb
@@ -244,12 +245,32 @@ cat /etc/fstab
 apt install -y apt-file rsync fontconfig
 apt-file update
 
-# dnf install NetworkManager rsync keychain fontconfig terminus-fonts-console clang
-# systemctl enable NetworkManager
-
-
 ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
-echo >> /etc/vconsole.conf 'FONT=Uni2-Terminus32x16'
+```
+
+### Replace /etc/default/console-setup with following content (See cat line in next section)
+```sh
+# CONFIGURATION FILE FOR SETUPCON
+
+# Consult the console-setup(5) manual page.
+
+ACTIVE_CONSOLES="/dev/tty[1-6]"
+
+CHARMAP="UTF-8"
+
+CODESET="guess"
+FONTFACE="Terminus"
+FONTSIZE="16x32"
+
+VIDEOMODE=
+```
+
+### Setup console font
+```sh
+cat > /etc/default/console-setup # see above for content to paste
+# Ctrl-D when done
+dpkg-reconfigure console-setup --frontend=noninteractive # accept default answers
+
 exit
 ```
 
