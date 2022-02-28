@@ -9,7 +9,6 @@ Press Alt-F3
 
 ## Check ssh, set user password
 ```sh
-setfont Uni2-Terminus32x16.psf.gz # optional, set console font
 systemctl status ssh
 ip addr # 192.168.10.192
 passwd
@@ -20,11 +19,9 @@ passwd
 
 ```sh
 sudo apt -y update
-sudo apt -y install pv apt-file systemd-container arch-install-scripts
+sudo apt -y install pv apt-file systemd-container arch-install-scripts micro
 sudo apt-file update
 ```
-
-
 
 ## Check partiton table
 ```sh
@@ -68,7 +65,6 @@ sudo dd if=/dev/zero of=/dev/sda2 bs=4096 count=1
 sudo dd if=/dev/zero of=/dev/sda3 bs=4096 count=1
 sudo blkid /dev/sda*
 ```
-
 
 ### Make filesystems
 ```sh
@@ -121,134 +117,125 @@ fgrep rootfs.tar.xz SHA256SUMS > SHA256SUMS.rootfs
 sha256sum -c SHA256SUMS.rootfs
 ```
 
-
 ### extract image and create systemd machine id
 ```sh
-sudo -v
 pv rootfs.tar.xz | sudo tar Jpxf - --directory=/mnt/
 sudo systemd-machine-id-setup --root=/mnt
+alias chroot-mnt='sudo arch-chroot /mnt'
+sudo genfstab -U /mnt | sudo dd of=/mnt/etc/kernel/cmdline
 ```
 
-### Enter chroot and install initial packages
+### Install initial packages
 ```sh
-sudo arch-chroot /mnt
-#####################
+echo 'APT::Install-Recommends "0";' | sudo tee    /mnt/etc/apt/apt.conf.d/99apt.conf
+echo 'APT::Install-Suggests "0";' 	| sudo tee -a /mnt/etc/apt/apt.conf.d/99apt.conf
 
-echo 'APT::Install-Suggests "0";' > /etc/apt/apt.conf.d/99apt.conf
-echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/99apt.conf
+chroot-mnt apt -y update
+chroot-mnt apt -y full-upgrade
 
-apt -y update
-apt -y full-upgrade
+deny_pkgs="os-prober libimobiledevice6 grub-pc grub-pc-bin grub2-common"
+deny_pkgs+=" grub-common grub-efi-amd64 grub-efi-ia32 lilo"
 
-apt-mark hold os-prober
-apt-mark hold libimobiledevice6
-apt-mark hold grub-pc
-apt-mark hold grub-pc-bin
-apt-mark hold grub2-common
-apt-mark hold grub-common
-apt-mark hold grub-efi-amd64
-apt-mark hold grub-efi-ia32
-apt-mark hold lilo
+for pkg in $deny_pkgs; do chroot-mnt apt-mark hold $pkg; done
 
-apt install -y htop mlocate openssh-server micro man-db bash-completion git aptitude
+chroot-mnt apt install -y \
+	htop mlocate openssh-server micro man-db bash-completion git aptitude \
+	efibootmgr systemd-container pciutils wget lshw apt-file rsync fontconfig
 
-exit # to get bash completion on reentry
+chroot-mnt apt-file update
 ```
 
-### Install more packages
+### Set up boot command line
 ```sh
-sudo arch-chroot /mnt
-#####################
-
-apt install -y efibootmgr systemd-container pciutils wget lshw
-exit
+sudo micro /mnt/etc/kernel/cmdline
+# set cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet
 ```
 
+### Patch and verify boot command line
 ```sh
-sudo genfstab -U /mnt
+sudo sed 's,UUID=,/dev/disk/by-uuid/,' -i /mnt/etc/kernel/cmdline
+chroot-mnt cat /etc/kernel/cmdline
+```
+
+### Set up efi boot updater
+```sh
+sudo dd of=/mnt/etc/kernel/postinst.d/zz-update-boot-efi # paste in zz-update-boot-efi.sh content
+# Ctrl-D when done
 ```
 
 ### Set up bootloader and install kernel
 ```sh
-sudo arch-chroot /mnt
-#####################
+chroot-mnt chmod -v 755 /etc/kernel/postinst.d/zz-update-boot-efi
+chroot-mnt mkdir -pv /etc/initramfs-tools/post-update.d/ /etc/kernel/postrm.d/ /etc/initramfs/post-update.d/
+chroot-mnt ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs-tools/post-update.d/
+chroot-mnt ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/kernel/postrm.d/
+chroot-mnt ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs/post-update.d/
 
-micro /etc/kernel/cmdline
-# note root UUID from previous: genfstab -U /mnt
-# cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet
-sed 's,UUID=,/dev/disk/by-uuid/,' -i /etc/kernel/cmdline
-cat /etc/kernel/cmdline
+chroot-mnt bootctl install --make-machine-id-directory=no
 
-cat > /etc/kernel/postinst.d/zz-update-boot-efi # paste in zz-update-boot-efi.sh content
-# Ctrl-D when done
-chmod -v 755 /etc/kernel/postinst.d/zz-update-boot-efi
-mkdir -pv /etc/initramfs-tools/post-update.d/ /etc/kernel/postrm.d/ /etc/initramfs/post-update.d/
-ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs-tools/post-update.d/
-ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/kernel/postrm.d/
-ln -sv /etc/kernel/postinst.d/zz-update-boot-efi /etc/initramfs/post-update.d/
+chroot-mnt apt install -y --install-recommends linux-image-generic
 
-bootctl install --make-machine-id-directory=no
-
-apt install -y --install-recommends linux-image-generic
-
-bootctl
-efibootmgr -v
-sha256sum $(find /boot -type f | sort)
+chroot-mnt bootctl
+chroot-mnt efibootmgr -v
+chroot-mnt bash -c 'sha256sum $(find /boot -type f | sort)'
 ```
 
 ### Prepare for soft boot
 ```sh
-systemctl disable ssh
-passwd
-exit
-```
-
-### Soft boot into new install
-```sh
-ip addr # change enp1s0 accordingly in following lines to nic with lan/wan address
-netdev=eno1
-sudo sed s,eth0,$netdev,g -i /mnt/etc/netplan/10-lxc.yaml
-sudo systemd-nspawn --network-macvlan=$netdev --boot --directory=/mnt
-#####################################################################
-netdev=eno1
-dhclient mv-$netdev
-ip addr
-updatedb
-```
-
-### Create admin account
-```sh
-useradd -r -m admin
-passwd admin
-chsh admin --shell /bin/bash
-gpasswd -a admin sudo
+chroot-mnt systemctl disable ssh
+chroot-mnt passwd
+chroot-mnt useradd -r -m admin
+chroot-mnt passwd admin
+chroot-mnt chsh admin --shell /bin/bash
+chroot-mnt gpasswd -a admin sudo
+chroot-mnt updatedb
 ```
 
 ### Set hostname
 ```sh
-echo NEW-HOSTNAME > /etc/hostname # change NEW-HOSTNAME appropiately
-
-hostname -F /etc/hostname
-hostname
-systemctl enable ssh
-halt # poweroff container
+chroot-mnt bash -c 'echo NEW-HOSTNAME > /etc/hostname' # change NEW-HOSTNAME appropiately
 ```
 
+### set network device
+```sh
+ip addr # change eno1 accordingly in following lines to nic with lan/wan address
+netdev=eno1
+```
+
+### Soft boot into new install
+```sh
+sudo sed s,eth0,mv-$netdev,g -i /mnt/etc/netplan/10-lxc.yaml
+sudo cat /mnt/etc/netplan/10-lxc.yaml
+sudo systemd-nspawn --network-macvlan=$netdev --boot --directory=/mnt
+# login as admin
+```
+
+### verify hostname and dhcp success in container
+```sh
+ip addr # verify ip addr
+exit
+```
+
+### login as root halt container
+```sh
+halt	# halt container
+```
+
+### fix nic name for netplan
+```sh
+sudo sed s,mv-$netdev,$netdev,g -i /mnt/etc/netplan/10-lxc.yaml
+sudo cat /mnt/etc/netplan/10-lxc.yaml
+```
 
 ### Prepare for hard boot
 ```sh
-sudo genfstab -U /mnt | sed 's,UUID=,/dev/disk/by-uuid/,' | sudo tee /mnt/etc/fstab
-sudo arch-chroot /mnt
-#####################
-cat /etc/fstab
-
-apt install -y apt-file rsync fontconfig
-apt-file update
-
-ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
+chroot-mnt systemctl enable ssh
+sudo genfstab -U /mnt | sed 's,UUID=,/dev/disk/by-uuid/,' | sudo dd of=/mnt/etc/fstab
+chroot-mnt cat /etc/fstab
+chroot-mnt ln -svf /usr/share/zoneinfo/CST6CDT /etc/localtime
 ```
 
-### Replace /etc/default/console-setup with following content (See cat line in next section)
+### Replace /etc/default/console-setup with following content (See dd line in next section)
 ```sh
 # CONFIGURATION FILE FOR SETUPCON
 
@@ -263,15 +250,20 @@ FONTFACE="Terminus"
 FONTSIZE="16x32"
 
 VIDEOMODE=
+
+# The following is an example how to use a braille font
+# FONT='lat9w-08.psf.gz brl-8x8.psf'
 ```
 
-### Setup console font
+### Setup console font (step #1)
 ```sh
-cat > /etc/default/console-setup # see above for content to paste
+sudo dd of=/etc/default/console-setup # see above for content to paste
 # Ctrl-D when done
-dpkg-reconfigure console-setup --frontend=noninteractive # accept default answers
+```
 
-exit
+### Setup console font (step #2)
+```sh
+chroot-mnt dpkg-reconfigure console-setup -u # Answer per what was put in /etc/default/console-setup
 ```
 
 ### Prepare to reboot
