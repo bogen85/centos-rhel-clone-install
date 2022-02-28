@@ -148,7 +148,7 @@ chroot-mnt apt-file update
 ### Set up boot command line
 ```sh
 sudo micro /mnt/etc/kernel/cmdline
-# set cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet
+# set cmdline appropitately: root=UUID=4d18d6d4-86fc-41f1-b6b3-a302d04cf0e7 rw quiet systemd.show_status=yes
 ```
 
 ### Patch and verify boot command line
